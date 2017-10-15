@@ -1,0 +1,162 @@
+#!/usr/bin/env python
+import argparse
+import logging
+import os
+import sys
+
+import jinja2
+
+try:
+    from .settings import TEMPLATE_KWARGS
+except ImportError:
+    TEMPLATE_KWARGS = {}
+
+
+log = logging.getLogger(__name__)
+global ns
+
+
+class PathFactory(object):
+    @property
+    def home(self):
+        return os.path.expanduser('~')
+
+    @property
+    def home_bin(self):
+        return os.path.join(self.home, 'bin')
+
+    @property
+    def sublime_snippets(self):
+        if sys.platform == 'win32':
+            return os.path.join(self.home, 'AppData', 'Roaming', 'Sublime Text 3', 'Packages', 'User')
+        raise OSError('%s not supported' % sys.platform)
+
+    @property
+    def resource_root(self):
+        return os.path.abspath(os.path.dirname(__file__))
+
+    @property
+    def build_templates(self):
+        return os.path.join(self.resource_root, 'builds')
+
+    @property
+    def snippet_templates(self):
+        return os.path.join(self.resource_root, 'snippets')
+
+
+class CheckWorker(object):
+    def remove(self, path):
+        log.info('Removing `%s`', path)
+
+    def sync(self, path, content):
+        content = content.encode('utf-8')
+        with open(path, 'rb') as fd:
+            log.info('Syncing `%s`%s', path, ' (already synced)' if content == fd.read() else '')
+
+    def write(self, path, content):
+        log.info('Writing content to `%s`', path)
+        log.debug('`%s` content: %s', path, content)
+
+
+class SyncWorker(object):
+    def remove(self, path):
+        os.remove(path)
+
+    def write(self, path, content):
+        with open(path, 'wb') as fd:
+            log.info('Writing `%s`', path)
+            fd.write(content.encode('utf-8'))
+
+    def sync(self, path, content):
+        content = content.encode('utf-8')
+        with open(path, 'rb') as fd:
+            should_update = content != fd.read()
+        log.info('Syncing `%s`%s', path, ' (already synced)' if not should_update else '')
+        if should_update:
+            with open(path, 'wb') as fd:
+                fd.write(content)
+
+
+def check_env():
+    path_factory = PathFactory()
+    home_bin = path_factory.home_bin
+    if home_bin not in os.environ['PATH']:
+        log.error('%s is not in path', home_bin)
+        log.warning('%s', sys.path)
+
+
+def is_build(name):
+    return name.startswith('apr.') and name.endswith('.sublime-build')
+
+
+def to_build_name(name):
+    return 'apr.' + name.replace('.j2', '.sublime-build')
+
+
+def to_snippet_name(name):
+    return 'apr.' + name.replace('.j2', '.sublime-snippet')
+
+
+def is_snippet(name):
+    return name.startswith('apr.') and name.endswith('.sublime-snippet')
+
+
+def check_builds(worker):
+    path_factory = PathFactory()
+    log.info('Syncing builds...')
+    sync_templates(worker, path_factory.build_templates, path_factory.sublime_snippets, is_build, to_build_name)
+
+
+def check_snippets(worker):
+    path_factory = PathFactory()
+    log.info('Syncing snippets...')
+    sync_templates(worker, path_factory.snippet_templates, path_factory.sublime_snippets, is_snippet, to_snippet_name)
+
+
+def sync_templates(worker, source_path, target_path, is_target_fn, to_target_fn):
+    snippets = os.listdir(source_path)
+    existing_snippets = [x for x in os.listdir(target_path) if is_target_fn(x)]
+    target_snippets = [to_target_fn(x) for x in snippets]
+    old_snippets = set(existing_snippets).difference(target_snippets)
+
+    j2_env = jinja2.Environment(loader=jinja2.FileSystemLoader(source_path), autoescape=False)
+
+    for snippet in old_snippets:
+        worker.remove(os.path.join(target_path, snippet))
+
+    if not old_snippets:
+        log.info('No old snippets to remove')
+
+    for name in snippets:
+        target_name = to_target_fn(name)
+        path = os.path.join(target_path, target_name)
+        template = j2_env.get_template(name)
+        content = template.render(**TEMPLATE_KWARGS )
+
+        if target_name in existing_snippets:
+            worker.sync(path, content)
+        else:
+            worker.write(path, content)
+
+    if not snippets:
+        log.info('No snippets to sync')
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('command', choices=['sync', 'check'])
+
+    global ns
+    ns = parser.parse_args()
+    print(ns)
+    logging.basicConfig(level=logging.DEBUG if ns.verbose else logging.INFO)
+
+    worker = (SyncWorker if ns.command == 'sync' else CheckWorker)()
+    check_env()
+    check_snippets(worker)
+    check_builds(worker)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,14 @@
+<snippet>
+    <content><![CDATA[
+src = bld.path.parent.ant_glob('**/*.py', excl=['**/__init__.py'])
+bld.py_unittest(
+    src,
+    py_modules="""${1:<modules>}""",
+    depth=1)
+
+]]></content>
+    <!-- Optional: Set a tabTrigger to define how to trigger the snippet -->
+    <tabTrigger>wspy</tabTrigger>
+    <!-- Optional: Set a scope to limit where the snippet will trigger -->
+    <scope>source.python</scope>
+</snippet>

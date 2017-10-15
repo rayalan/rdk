@@ -1,0 +1,6 @@
+{
+    "shell_cmd": "cd ${file_path/(?:mock|src|(?:inc(?:_priv)?))(?:\\/.*)?//} && pwd && zarf",
+    "selector" : ["source.python", "text.plain", "source.c++", "source.c"],
+    "file_regex" : "^(?:\\.\\./)?(\\S+):(\\d+):([0-9]+): (?:fatal )?(?:error|warning)(?: in \"\\w+\")?: (.*)$",
+    "working_dir" : "${file_path/(Documents\\/[^\\/]+)\\/(.+)/(?1$1:)/}",
+}
