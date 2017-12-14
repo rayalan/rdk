@@ -11,8 +11,8 @@ Usage
 -----
 
     pip install -r requirements.txt
-    rdk check  # Check alignment
-    rdk sync  # Syncronization
+    ./rdk check  # Check alignment
+    ./rdk sync  # Syncronization
 
 Requirements
 ------------
